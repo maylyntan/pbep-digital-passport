@@ -43,13 +43,28 @@ export default function TeacherPortal() {
     return () => listener.subscription.unsubscribe();
   }, [loadQueue]);
 
-  useEffect(() => {
-    if (!supabase || !signedIn) return;
-    const channel = supabase.channel("teacher-queue")
-      .on("postgres_changes", { event: "*", schema: "public", table: "checkin_requests" }, () => loadQueue())
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [signedIn, loadQueue]);
+ useEffect(() => {
+  if (!supabase || !signedIn) return;
+
+  const client = supabase;
+
+  const channel = client
+    .channel("teacher-queue")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "checkin_requests",
+      },
+      () => loadQueue()
+    )
+    .subscribe();
+
+  return () => {
+    client.removeChannel(channel);
+  };
+}, [signedIn, loadQueue]);
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
