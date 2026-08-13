@@ -22,22 +22,41 @@ export default function BoothChallenge({ booth }: { booth: Booth }) {
   }, [booth.slug]);
 
   useEffect(() => {
-    const current = loadPassport();
-    setPassport(current);
-    if (current) checkExisting(current);
-  }, [checkExisting]);
+  if (!supabase || !requestId) return;
 
-  useEffect(() => {
-    if (!supabase || !requestId) return;
-    const channel = supabase.channel(`checkin-${requestId}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "checkin_requests", filter: `id=eq.${requestId}` }, (payload) => {
+  const client = supabase;
+
+  const channel = client
+    .channel(`checkin-${requestId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "checkin_requests",
+        filter: `id=eq.${requestId}`,
+      },
+      (payload) => {
         const next = payload.new as { status?: string };
-        if (next.status === "confirmed") setState("confirmed");
-        if (next.status === "rejected") { setState("idle"); setMessage("The teacher declined this request. Complete the booth task and try again."); }
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [requestId]);
+
+        if (next.status === "confirmed") {
+          setState("confirmed");
+        }
+
+        if (next.status === "rejected") {
+          setState("idle");
+          setMessage(
+            "The teacher declined this request. Complete the booth task and try again."
+          );
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    client.removeChannel(channel);
+  };
+}, [requestId]);
 
   async function requestConfirmation() {
     if (!passport) return;
