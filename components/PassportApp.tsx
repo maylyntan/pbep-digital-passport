@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, MessageCircle, QrCode, RotateCcw, Sparkles } from "lucide-react";
 import { booths } from "@/lib/booths";
-import { clearPassport, loadPassport, savePassport } from "@/lib/passport";
+import { clearPassport, createStudentPassport, restorePassport } from "@/lib/passport";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type { Passport, Stamp } from "@/lib/types";
 
@@ -25,59 +25,34 @@ export default function PassportApp() {
   }, []);
 
   useEffect(() => {
-    const current = loadPassport();
-    setPassport(current);
-    if (current) refreshStamps(current);
-    setLoading(false);
+    let active = true;
+    (async () => {
+      const current = await restorePassport();
+      if (!active) return;
+      setPassport(current);
+      if (current) await refreshStamps(current);
+      if (active) setLoading(false);
+    })();
+    return () => { active = false; };
   }, [refreshStamps]);
 
   async function createPassport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const nextPassport: Passport = {
-      id: crypto.randomUUID(),
-      firstName: String(form.get("firstName") || "").trim(),
-      studentId: String(form.get("studentId") || "").trim(),
-      className: String(form.get("className") || "").trim(),
-      createdAt: new Date().toISOString(),
-    };
+    const result = await createStudentPassport({
+      firstName: String(form.get("firstName") || ""),
+      studentId: String(form.get("studentId") || ""),
+      className: String(form.get("className") || ""),
+    });
 
-    if (!nextPassport.firstName || !nextPassport.studentId || !nextPassport.className) {
-      setMessage("Please complete all three fields.");
+    if (!result.passport) {
+      setMessage(result.error || "Could not create passport.");
       return;
     }
 
-    if (supabase) {
-      let { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session) {
-        const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
-        if (anonError || !anonData.user) {
-          setMessage(`Could not start a secure student session: ${anonError?.message || "Unknown error"}`);
-          return;
-        }
-        sessionData = { session: anonData.session };
-      }
-      const authUserId = sessionData.session?.user.id;
-      if (!authUserId) {
-        setMessage("Could not identify this device session.");
-        return;
-      }
-      const { error } = await supabase.from("students").insert({
-        id: nextPassport.id,
-        auth_user_id: authUserId,
-        first_name: nextPassport.firstName,
-        student_code: nextPassport.studentId,
-        class_name: nextPassport.className,
-      });
-      if (error) {
-        setMessage(`Could not create passport: ${error.message}`);
-        return;
-      }
-    }
-
-    savePassport(nextPassport);
-    setPassport(nextPassport);
+    setPassport(result.passport);
     setMessage("");
+    await refreshStamps(result.passport);
   }
 
   function reset() {
@@ -146,7 +121,7 @@ export default function PassportApp() {
 
           {completed.size === booths.length && <div className="status-box success"><strong>Voice Champion!</strong><br />You completed every booth. Great work.</div>}
           <div className="actions">
-            <Link href="/booth-kit" className="secondary-btn">View booth QR codes</Link>
+            <span className="tiny-note">Scan the QR displayed at each physical booth to continue.</span>
             <button className="danger-btn" onClick={reset}><RotateCcw size={16} /> Reset this device</button>
           </div>
         </section>
