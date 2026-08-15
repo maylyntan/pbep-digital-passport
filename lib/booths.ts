@@ -220,6 +220,9 @@ export const BOOTHS: readonly Booth[] = Object.freeze([
 
 export const TOTAL_BOOTHS = BOOTHS.length;
 
+/** The wider Find Your Voice campaign site. */
+export const CAMPAIGN_HOMEPAGE = "https://kaplanfindyourvoice.netlify.app/";
+
 const BOOTHS_BY_ID = new Map(BOOTHS.map((booth) => [booth.id, booth]));
 
 export function getBooth(slug: string | null | undefined): Booth | null {

@@ -1,7 +1,8 @@
 "use client";
 
-import { BookOpen, Heart, Save, Sparkles, Target } from "lucide-react";
+import { BookOpen, ExternalLink, Heart, Save, Sparkles, Target } from "lucide-react";
 
+import { CAMPAIGN_HOMEPAGE } from "@/lib/booths";
 import type { LearningRecord } from "@/lib/types";
 
 interface LearningRecordPanelProps {
@@ -9,7 +10,6 @@ interface LearningRecordPanelProps {
   saving: boolean;
   onChange: (field: keyof LearningRecord, value: string) => void;
   onSave: () => void;
-  onNewPassport: () => void;
 }
 
 export function LearningRecordPanel({
@@ -17,7 +17,6 @@ export function LearningRecordPanel({
   saving,
   onChange,
   onSave,
-  onNewPassport,
 }: LearningRecordPanelProps) {
   return (
     <section className="panel">
@@ -95,9 +94,16 @@ export function LearningRecordPanel({
       </div>
 
       <div className="record-actions">
-        <button type="button" className="ghost-button" onClick={onNewPassport}>
-          New passport
-        </button>
+        <a
+          className="ghost-button"
+          href={CAMPAIGN_HOMEPAGE}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Find Your Voice Homepage
+          <ExternalLink size={16} aria-hidden="true" />
+          <span className="visually-hidden">(opens in a new tab)</span>
+        </a>
         <button type="button" className="cta" onClick={onSave} disabled={saving}>
           <Save size={17} aria-hidden="true" />
           {saving ? "Saving…" : "Save learning record"}
