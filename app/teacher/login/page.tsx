@@ -7,20 +7,15 @@ import { ShieldCheck } from "lucide-react";
 
 import { SetupNotice } from "@/components/SetupNotice";
 import { useToast } from "@/components/Toaster";
-import { claimTeacherAccess, useTeacherSession } from "@/lib/teacher";
-
-type Mode = "signin" | "signup";
+import { useTeacherSession } from "@/lib/teacher";
 
 export default function TeacherLoginPage() {
   const router = useRouter();
   const toast = useToast();
   const { supabase, status, refresh } = useTeacherSession();
 
-  const [mode, setMode] = useState<Mode>("signin");
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
+  const [accessCode, setAccessCode] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -43,39 +38,17 @@ export default function TeacherLoginPage() {
     setBusy(true);
 
     try {
-      if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { name } },
-        });
-        if (error) throw error;
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: accessCode,
+      });
+      if (error) throw error;
 
-        // A fresh sign-up may not carry a session if email confirmation is on.
-        const { data } = await supabase.auth.getSession();
-        if (!data.session) {
-          toast.info("Check your email to confirm the account, then sign in.");
-          setMode("signin");
-          return;
-        }
-
-        await claimTeacherAccess(supabase, inviteCode);
-        toast.success("Facilitator access is ready.");
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        toast.success("Signed in.");
-      }
-
+      toast.success("Signed in.");
       refresh();
       router.replace("/teacher");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      toast.error(
-        message.includes("invite")
-          ? message
-          : "We couldn't sign you in. Check your details and try again.",
-      );
+    } catch {
+      toast.error("We couldn't sign you in. Check the email and access code.");
     } finally {
       setBusy(false);
     }
@@ -87,50 +60,15 @@ export default function TeacherLoginPage() {
         <span className="brand-mark" aria-hidden="true">
           K
         </span>
-        <h1>{mode === "signup" ? "Create facilitator account" : "Festival facilitator"}</h1>
+        <h1>Festival facilitator</h1>
         <p>
-          {mode === "signup"
-            ? "Create and verify a facilitator account for the private dashboard."
-            : "Sign in to confirm student stamps and view participation."}
+          Sign in to confirm student stamps and view participation. Accounts are set up
+          by the campaign lead — use your school email and the festival access code.
         </p>
 
-        <div className="auth-tabs" role="tablist" aria-label="Account mode">
-          <button
-            type="button"
-            role="tab"
-            className="auth-tab"
-            aria-selected={mode === "signin"}
-            onClick={() => setMode("signin")}
-          >
-            Sign in
-          </button>
-          <button
-            type="button"
-            role="tab"
-            className="auth-tab"
-            aria-selected={mode === "signup"}
-            onClick={() => setMode("signup")}
-          >
-            Sign up
-          </button>
-        </div>
-
         <form className="form-grid" onSubmit={handleSubmit} style={{ maxWidth: "none" }}>
-          {mode === "signup" ? (
-            <div className="field">
-              <label htmlFor="teacher-name">Name</label>
-              <input
-                id="teacher-name"
-                type="text"
-                value={name}
-                required
-                onChange={(event) => setName(event.target.value)}
-              />
-            </div>
-          ) : null}
-
           <div className="field">
-            <label htmlFor="teacher-email">Email</label>
+            <label htmlFor="teacher-email">School email</label>
             <input
               id="teacher-email"
               type="email"
@@ -142,37 +80,29 @@ export default function TeacherLoginPage() {
           </div>
 
           <div className="field">
-            <label htmlFor="teacher-password">Password</label>
+            <label htmlFor="access-code">
+              Festival access code{" "}
+              <span className="hint">(shared by the campaign lead)</span>
+            </label>
             <input
-              id="teacher-password"
+              id="access-code"
               type="password"
-              autoComplete={mode === "signup" ? "new-password" : "current-password"}
-              minLength={8}
-              value={password}
+              autoComplete="current-password"
+              value={accessCode}
               required
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => setAccessCode(event.target.value)}
             />
           </div>
 
-          {mode === "signup" ? (
-            <div className="field">
-              <label htmlFor="invite-code">
-                Festival invite code <span className="hint">(from the campaign lead)</span>
-              </label>
-              <input
-                id="invite-code"
-                type="text"
-                value={inviteCode}
-                required
-                onChange={(event) => setInviteCode(event.target.value)}
-              />
-            </div>
-          ) : null}
-
           <button type="submit" className="cta cta--full" disabled={busy}>
             <ShieldCheck size={18} aria-hidden="true" />
-            {busy ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}
+            {busy ? "Please wait…" : "Sign in"}
           </button>
+
+          <p className="form-note">
+            No account yet? Ask the campaign lead to add your email — facilitator
+            accounts cannot be self-created.
+          </p>
         </form>
 
         <Link href="/" className="auth-footer-link">

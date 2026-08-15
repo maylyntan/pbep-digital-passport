@@ -21,7 +21,7 @@ Built to the specification in [PRD.md](PRD.md).
 | Data | Supabase Postgres with Row Level Security |
 | Realtime | Supabase Realtime on `checkin_requests` and `stamps` |
 | Student auth | Supabase anonymous sign-in (device-linked) |
-| Facilitator auth | Supabase email + password, gated by an invite code |
+| Facilitator auth | Supabase email + password; accounts created by hand, password = shared festival access code |
 | QR codes | `qrcode.react` (SVG, generated in the browser) |
 | Hosting | Netlify with `@netlify/plugin-nextjs` |
 
@@ -33,7 +33,7 @@ Built to the specification in [PRD.md](PRD.md).
 |---|---|---|
 | `/` | Public | Student passport — registration, then the stamp dashboard |
 | `/?booth=<slug>` | Public | Passport with the scanned booth's check-in card pinned to the top |
-| `/teacher/login` | Public | Facilitator sign in / sign up |
+| `/teacher/login` | Public | Facilitator sign in (email + festival access code) |
 | `/teacher` | Facilitator | Pending check-in queue, KPIs, booth and class breakdowns, student records, CSV export |
 | `/teacher/booth-kit` | Facilitator | Printable A4 QR kit, one card per booth |
 
@@ -58,7 +58,7 @@ npm install
    register without this.
 4. Go to **Authentication → Providers → Email** and decide whether facilitator accounts need
    email confirmation. With confirmation on, a new facilitator must confirm by email, sign in,
-   and then enter the invite code.
+   and then sign in.
 
 The schema also adds `checkin_requests` and `stamps` to the realtime publication. If Supabase
 reports a table is already in the publication, ignore that message.
@@ -69,17 +69,15 @@ Copy `.env.example` to `.env.local` and fill it in:
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon or publishable key>
 NEXT_PUBLIC_SITE_URL=https://<site>.netlify.app
-SUPABASE_SERVICE_ROLE_KEY=<service role key>
-TEACHER_INVITE_CODE=<a code you share with facilitators>
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY` and `TEACHER_INVITE_CODE` are server-only — never prefix them with
-`NEXT_PUBLIC_`.
+Three variables, no server-side secrets. The festival access code is a Supabase account
+password, so it never reaches the deployed JavaScript.
 
 > **`NEXT_PUBLIC_SITE_URL` is baked into every booth QR code.** Set the final production URL
-> before printing the kit.
+> before printing the kit, and redeploy with the cache cleared after changing it.
 
 ### 4. Run
 
@@ -89,15 +87,35 @@ npm run dev
 
 ---
 
-## First facilitator
+## Facilitator accounts
 
-1. Go to `/teacher/login` → **Sign up**.
-2. Enter name, email, password and the festival invite code.
-3. The app calls `POST /api/teacher/claim`, which verifies the code server-side and creates the
-   `teacher_profiles` row that grants access.
+Facilitators **cannot sign themselves up**. The campaign lead creates each account, and every
+facilitator signs in with their school email plus one shared festival access code.
 
-An account without that row sees an invite-code prompt instead of the dashboard. Sign-up alone
-grants nothing.
+**Once, before the festival:** turn OFF Supabase → Authentication → Providers → Email →
+*Allow new users to sign up*. Otherwise anyone holding the access code could create an account.
+
+**For each facilitator:**
+
+1. Supabase → Authentication → **Users → Add user**
+   - Email: their school email
+   - Password: the shared festival access code
+   - Tick **Auto Confirm User** (skips the confirmation email)
+2. SQL Editor → authorise the account:
+
+```sql
+insert into public.teacher_profiles (user_id, display_name)
+select id, coalesce(raw_user_meta_data ->> 'name', email)
+  from auth.users
+ where email = 'facilitator@kaplan.edu.sg'
+    on conflict (user_id) do nothing;
+```
+
+Step 2 is what actually grants access — without that row they can sign in but land on
+"Not a facilitator account". To revoke someone, delete their `teacher_profiles` row.
+
+Because the access code is shared, treat it like a password: don't post it anywhere public, and
+change it after the festival (Authentication → Users → each user → reset password).
 
 ---
 
@@ -127,7 +145,7 @@ Confident Communicator → Voice Champion.
 1. Push the repo to GitHub.
 2. In Netlify, **Add new site → Import an existing project**, and pick the repo.
 3. Build command `npm run build`, publish directory `.next` (already set in `netlify.toml`).
-4. Add all five environment variables under **Site settings → Environment variables**.
+4. Add the three environment variables under **Site settings → Environment variables**.
 5. Deploy, then open `/teacher/booth-kit` and print the cards **after** the final URL is live.
 
 ---
@@ -138,7 +156,7 @@ Confident Communicator → Voice Champion.
 
 - Confirm the production URL, then print the QR kit (4 cards per A4 sheet, 7 sheets).
 - Scan a printed card with a phone to check it opens the passport.
-- Share the invite code with facilitators and have each of them sign in once, in advance.
+- Create every facilitator account, share the access code, and have each of them sign in once, in advance.
 - Ask facilitators to keep `/teacher` open on the booth device — the queue is live.
 
 **On the day**
@@ -155,7 +173,7 @@ Confident Communicator → Voice Champion.
 | Student tapped request twice | Harmless — only one pending row can exist per booth. |
 | Wrong student confirmed | Reject was not the action taken, so the stamp exists. Remove the row from the `stamps` table in Supabase. |
 | Queue not updating | Check the realtime publication in Supabase and refresh the dashboard. |
-| Facilitator sees "Enter your invite code" | Their account has no `teacher_profiles` row. Enter the code to unlock. |
+| Facilitator sees "Not a facilitator account" | Their account has no `teacher_profiles` row. Run the insert in the SQL editor for their email. |
 
 ---
 

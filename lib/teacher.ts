@@ -73,30 +73,3 @@ export function useTeacherSession(): TeacherSession {
 
   return { supabase, status, session, refresh };
 }
-
-/** Sends the invite code to the server, which grants facilitator access. */
-export async function claimTeacherAccess(
-  supabase: SupabaseClient,
-  inviteCode: string,
-): Promise<void> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  if (!token) throw new Error("Sign in first.");
-
-  const response = await fetch("/api/teacher/claim", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ inviteCode }),
-  });
-
-  const body = (await response.json().catch(() => null)) as
-    | { ok?: boolean; error?: string }
-    | null;
-
-  if (!response.ok || !body?.ok) {
-    throw new Error(body?.error ?? "That invite code was not accepted.");
-  }
-}

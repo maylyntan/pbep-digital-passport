@@ -211,3 +211,32 @@ grant execute on function public.teacher_decide_checkin(uuid, text) to authentic
 
 alter publication supabase_realtime add table public.checkin_requests;
 alter publication supabase_realtime add table public.stamps;
+
+-- ---------------------------------------------------------------------------
+-- Granting facilitator access
+-- ---------------------------------------------------------------------------
+-- Facilitators cannot sign themselves up. For each one:
+--
+--   1. Authentication > Users > Add user
+--        Email:    their school email
+--        Password: the shared festival access code
+--        Tick "Auto Confirm User"
+--
+--   2. Run the statement below with their email to authorise the account.
+--      Without this row they can sign in but see "Not a facilitator account".
+--
+-- insert into public.teacher_profiles (user_id, display_name)
+-- select id, coalesce(raw_user_meta_data ->> 'name', email)
+--   from auth.users
+--  where email = 'facilitator@kaplan.edu.sg'
+--     on conflict (user_id) do nothing;
+--
+-- To authorise several at once, swap the where clause for:
+--  where email in ('one@kaplan.edu.sg', 'two@kaplan.edu.sg');
+--
+-- To revoke access:
+-- delete from public.teacher_profiles
+--  where user_id = (select id from auth.users where email = 'facilitator@kaplan.edu.sg');
+--
+-- Also switch OFF Authentication > Providers > Email > "Allow new users to sign up",
+-- so the access code alone cannot be used to create an account.

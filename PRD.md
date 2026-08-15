@@ -47,9 +47,9 @@ This is a **rebrand-and-rebuild**, not a fork:
 |---|---|---|
 | **Student** | Supabase anonymous session, persisted on the device | Create a passport, view own progress, request a check-in by scanning a booth QR, write a learning record, start a fresh passport |
 | **Facilitator / Teacher** | Supabase email + password, plus a `teacher_profiles` marker row | Everything a student can see for themselves, plus: approve/reject pending check-ins, view the live dashboard, open and print the booth QR kit, export CSV |
-| **First administrator** | Same as teacher, claims the dashboard once | Claim teacher access on first run using the invite code |
+| **Campaign lead** | Supabase dashboard access | Create facilitator accounts by hand and authorise them with a `teacher_profiles` row |
 
-There is **no separate admin role** beyond teacher. Any account holding a `teacher_profiles` row has full facilitator rights. Access is gated by the **invite code**, not by open sign-up.
+There is **no separate admin role** beyond teacher. Any account holding a `teacher_profiles` row has full facilitator rights. Facilitators cannot self-register: accounts are created in the Supabase dashboard and public sign-up is disabled.
 
 ---
 
@@ -137,7 +137,7 @@ Warm, encouraging, British spelling (*favourite*, *practise*, *organise*). Sente
 | Data | Supabase Postgres with Row Level Security |
 | Realtime | Supabase Realtime on `checkin_requests` and `stamps` |
 | Student auth | Supabase **anonymous sign-in** (must be enabled in Supabase → Authentication → Providers) |
-| Teacher auth | Supabase email + password, gated by an invite code |
+| Teacher auth | Supabase email + password; accounts pre-created, password = shared festival access code |
 | QR generation | `qrcode.react` (SVG, client-side, no network calls) |
 | Icons | `lucide-react` |
 | Hosting | Netlify with `@netlify/plugin-nextjs` |
@@ -148,7 +148,7 @@ Warm, encouraging, British spelling (*favourite*, *practise*, *organise*). Sente
 |---|---|---|
 | `/` | Public | Student passport. Registration form when no passport exists; dashboard when it does. |
 | `/?booth=<slug>` | Public | Passport with a **check-in card** for that booth pinned to the top. This is the QR target. |
-| `/teacher/login` | Public | Teacher sign in / sign up (sign-up requires the invite code). |
+| `/teacher/login` | Public | Teacher sign in — school email + festival access code. No sign-up. |
 | `/teacher` | Teacher | Live dashboard: KPIs, pending check-in queue, per-booth participation, per-class rollup, student records, CSV export. |
 | `/teacher/booth-kit` | **Teacher only** | Printable A4 QR kit, one card per booth. Not linked from any student-facing page. |
 | `*` | Public | 404 — Kaplan-branded, with a "Return to my passport" link. |
@@ -259,11 +259,14 @@ Add `checkin_requests` **and** `stamps` to the `supabase_realtime` publication.
 
 ### 4.4 Server routes
 
-Only one, because everything else is RLS-safe from the client:
+**None.** Every operation is RLS-safe from the client, and facilitator accounts are provisioned by hand in the Supabase dashboard, so the app ships with no API routes, no service-role key and no server-side secrets.
 
-| Route | Method | Body | Behaviour |
-|---|---|---|---|
-| `/api/teacher/claim` | POST | `{ inviteCode }` | Validates `inviteCode` against `TEACHER_INVITE_CODE` (server-side env, never exposed). On match, inserts a `teacher_profiles` row for the caller's user id using `SUPABASE_SERVICE_ROLE_KEY`. Rate-limit to 5 attempts per IP per 10 minutes; respond with a generic failure message on mismatch. |
+Facilitator provisioning (campaign lead, once per teacher):
+
+1. Supabase → Authentication → **Users → Add user**: their school email, the shared festival access code as the password, **Auto Confirm User** ticked.
+2. SQL editor → insert the matching `teacher_profiles` row (statement is documented at the end of `schema.sql`).
+
+Supabase → Authentication → Providers → Email → **Allow new users to sign up** must be **off**, otherwise the access code alone would let anyone create an account.
 
 ### 4.5 Environment variables
 
@@ -271,8 +274,6 @@ Only one, because everything else is RLS-safe from the client:
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 NEXT_PUBLIC_SITE_URL=https://<site>.netlify.app   # used to build absolute QR URLs
-SUPABASE_SERVICE_ROLE_KEY=                        # server only, never NEXT_PUBLIC_
-TEACHER_INVITE_CODE=                              # server only
 ```
 
 Ship a `.env.example` with these keys and empty values. `.gitignore` must cover `.env*`, `.next/`, `node_modules/`, and `Archive - do not use/`.
@@ -398,12 +399,15 @@ Actions: **New passport** (ghost, rotate-ccw icon) and **Save learning record** 
 
 ### 5.6 Screen — Teacher login (`/teacher/login`)
 
-Single card on the wash background, brand lockup on top. Tabs **Sign in** / **Sign up**.
+Single card on the wash background, brand lockup on top. **Sign in only — there is no sign-up.**
 
-- **Sign in:** email, password → `/teacher` on success.
-- **Sign up:** name, email, password (min 8), **festival invite code**. On success, call `POST /api/teacher/claim` with the code; only then does the account become a facilitator. Copy: *"Create and verify a facilitator account for the private dashboard."*
-- A signed-in account without a `teacher_profiles` row lands on a 403 card: *"This account does not have facilitator access."* with a **Enter invite code** action that retries the claim.
-- Never reveal whether an email exists. Generic failure copy: *"We couldn't sign you in. Check your details and try again."*
+- `h1` **Festival facilitator**, lead: *"Sign in to confirm student stamps and view participation. Accounts are set up by the campaign lead — use your school email and the festival access code."*
+- Two fields: **School email** and **Festival access code** (`type="password"`, hint *"shared by the campaign lead"*). Submit calls `signInWithPassword({ email, password: accessCode })` → `/teacher`.
+- Footer note: *"No account yet? Ask the campaign lead to add your email — facilitator accounts cannot be self-created."*
+- A signed-in account without a `teacher_profiles` row lands on a card headed **Not a facilitator account**: *"This email is signed in but has not been given facilitator access. Ask the campaign lead to add it, then sign in again."* with a **Sign out** action.
+- Never reveal whether an email exists. Generic failure copy: *"We couldn't sign you in. Check the email and access code."*
+
+> The access code is a shared password across all facilitator accounts. It is therefore rotated after the festival, never posted publicly, and never stored in the repo or in an environment variable — it lives only in Supabase as each account's password.
 
 ### 5.7 Screen — Teacher dashboard (`/teacher`)
 
@@ -479,7 +483,6 @@ Four cards per A4 sheet, 7 sheets for 25 booths. Verify a printed card scans fro
 │  │  ├─ page.tsx                # dashboard
 │  │  ├─ login/page.tsx
 │  │  └─ booth-kit/page.tsx
-│  └─ api/teacher/claim/route.ts
 ├─ components/                   # BrandHeader, StampTile, CheckinCard, ProgressPanel,
 │                                # MilestoneCard, LearningRecord, PendingQueue, KpiGrid,
 │                                # BoothBars, ClassList, StudentTable, QrCard, Toaster
@@ -487,7 +490,6 @@ Four cards per A4 sheet, 7 sheets for 25 booths. Verify a printed card scans fro
 │  ├─ booths.ts                  # the 25 booths (frozen)
 │  ├─ milestones.ts              # title thresholds
 │  ├─ supabase-client.ts         # browser client
-│  ├─ supabase-server.ts         # service-role client (server only)
 │  ├─ passport.ts                # register / request check-in / save record
 │  ├─ dashboard.ts               # aggregation + CSV
 │  └─ types.ts
@@ -512,7 +514,7 @@ Four cards per A4 sheet, 7 sheets for 25 booths. Verify a printed card scans fro
   package = "@netlify/plugin-nextjs"
 ```
 
-Set all five environment variables in Netlify → Site settings → Environment variables. `NEXT_PUBLIC_SITE_URL` must be the final production URL **before** the QR kit is printed.
+Set the three environment variables in Netlify → Site settings → Environment variables. `NEXT_PUBLIC_SITE_URL` must be the final production URL **before** the QR kit is printed.
 
 **Git:** initialise (`git init`), first commit `feat: Kaplan Find Your Voice digital passport`, push to a new GitHub repo, connect Netlify to the repo, deploy from `main`.
 
@@ -525,7 +527,7 @@ Set all five environment variables in Netlify → Site settings → Environment 
 3. Supabase project, run `schema.sql`, enable anonymous sign-ins, enable realtime on both tables.
 4. Student registration + passport dashboard (read-only stamps).
 5. `?booth=` check-in card and the pending request write path.
-6. Teacher auth, invite-code claim route, route protection.
+6. Teacher sign-in (email + access code), route protection, manual account provisioning.
 7. Teacher dashboard: pending queue + decision RPC, then KPIs, booth bars, class rollup, student table, CSV.
 8. Realtime wiring on both sides; verify the student tile flips within 2 s.
 9. Booth QR kit + print stylesheet; print a test sheet and scan it.
@@ -544,7 +546,7 @@ Set all five environment variables in Netlify → Site settings → Environment 
 - [ ] A rejection leaves no stamp and allows a fresh request.
 - [ ] Direct `insert` into `stamps` from a student session is refused by RLS.
 - [ ] `/teacher`, `/teacher/booth-kit` and the dashboard data are unreachable without a `teacher_profiles` row.
-- [ ] Sign-up without the correct invite code does not grant facilitator access.
+- [ ] A signed-in account with no `teacher_profiles` row is refused the dashboard and the booth kit.
 - [ ] The 8th confirmed stamp changes the title to **Voice Adventurer**; the 25th shows *"Passport complete — you found your voice!"*.
 - [ ] Learning record persists across a reload on the same device.
 - [ ] **New passport** starts an empty passport and leaves the previous record intact in the teacher dashboard.
@@ -558,7 +560,7 @@ Set all five environment variables in Netlify → Site settings → Environment 
 
 ## 10. Open items for Kerri
 
-1. **Invite code distribution** — who holds `TEACHER_INVITE_CODE` and how it reaches facilitators on the day.
+1. **Access code distribution** — who holds the shared festival access code, how it reaches facilitators, and who rotates it afterwards.
 2. **Booth count on the day** — the passport is hard-coded to 25. If a booth is dropped, the milestone thresholds (8/15/25) and the "of 25" copy need adjusting before printing.
 3. **Custom domain** — whether the passport sits on a Netlify subdomain or a Kaplan domain. This must be settled before QR printing, since the URL is baked into the codes.
 4. **Data retention** — how long student records are kept after the festival, and who deletes them.
