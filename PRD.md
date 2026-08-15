@@ -223,6 +223,12 @@ create index if not exists stamps_student_idx on public.stamps(student_id, confi
 - `checkin_requests`: insert only with `status = 'pending'`, `decided_by is null`, and a `students` row owned by `auth.uid()`; select own rows or all rows if `is_teacher()`. **No client update** — decisions go through the RPC.
 - `stamps`: select own or all if `is_teacher()`. **No client insert/update/delete at all.**
 
+> **Naming trap:** `students` has its own text column called `student_id` (the school ID),
+> which shadows `checkin_requests.student_id` / `stamps.student_id` (uuid) inside a policy
+> subquery. Always qualify the outer column — `s.id = stamps.student_id`, never
+> `s.id = student_id` — or Postgres rejects the policy with
+> `operator does not exist: uuid = text`.
+
 **Decision RPC** (`security definer`, mirrors the archived implementation):
 
 ```sql
