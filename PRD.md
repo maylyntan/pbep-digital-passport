@@ -3,7 +3,7 @@
 
 **Version:** 1.0
 **Date:** 15 August 2026
-**Owner:** Kerri Murasaki
+**Owner:** KHEA Acad
 **Status:** Ready for build
 **Repo:** `pbep-dp` (new GitHub repo, all existing content replaced)
 **Target host:** Netlify (matches `kaplanfindyourvoice.netlify.app`)
@@ -12,7 +12,7 @@
 
 ## 1. Summary
 
-Build a mobile-first web app that replaces the prototype currently hosted at `https://web-08112js9fi.skywork.website/`. Students at Kaplan Singapore's **Find Your Voice — English Festival Day** carry a **digital passport**, visit up to **25 speaking booths**, scan the booth's printed QR code after completing the activity, and collect a **stamp** once a facilitator confirms it. Teachers get a live dashboard of participation across every booth, class and student.
+Build a mobile-first web app that replaces the prototype. Students at Kaplan Singapore's **Find Your Voice — English Festival Day** carry a **digital passport**, visit up to **25 speaking booths**, scan the booth's printed QR code after completing the activity, and collect a **stamp** once a facilitator confirms it. Teachers get a live dashboard of participation across every booth, class and student.
 
 This is a **rebrand-and-rebuild**, not a fork:
 
