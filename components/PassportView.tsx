@@ -288,7 +288,7 @@ export function PassportView() {
         );
       } else if (code === "DEVICE_HAS_PASSPORT") {
         toast.error(
-          "This device already has a different passport. Tap New passport first.",
+          "This device is already linked to another passport. Please ask your teacher for help.",
         );
       } else {
         console.error("Passport registration failed:", error);
@@ -335,19 +335,6 @@ export function PassportView() {
     }
   }
 
-  async function handleNewPassport() {
-    if (!supabase) return;
-    const confirmed = window.confirm(
-      "Start a new passport on this device? Your current record will remain stored, but this device will no longer be linked to it.",
-    );
-    if (!confirmed) return;
-
-    const userId = await startNewPassport(supabase);
-    setAuthUserId(userId);
-    setSnapshot(null);
-    setRecord(EMPTY_RECORD);
-    toast.success("Ready for a new passport.");
-  }
 
   // ---- render ---------------------------------------------------------------
   if (!supabase) {
@@ -548,7 +535,6 @@ export function PassportView() {
               setRecord((current) => ({ ...current, [field]: value }))
             }
             onSave={handleSaveRecord}
-            onNewPassport={handleNewPassport}
           />
         </div>
       </main>
