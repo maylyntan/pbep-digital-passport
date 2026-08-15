@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { CircleCheck, Mic, QrCode } from "lucide-react";
+import { ChevronDown, ChevronUp, CircleCheck, Mic, QrCode } from "lucide-react";
 
 import { BrandHeader } from "@/components/BrandHeader";
 import { CheckinCard } from "@/components/CheckinCard";
@@ -38,6 +38,9 @@ import type {
   StudentRow,
 } from "@/lib/types";
 
+/** Booths shown before the student expands the full list. */
+const COLLAPSED_BOOTHS = 8;
+
 const EMPTY_RECORD: LearningRecord = {
   reflection: "",
   new_vocabulary: "",
@@ -61,6 +64,7 @@ export function PassportView() {
   const [saving, setSaving] = useState(false);
   const [record, setRecord] = useState<LearningRecord>(EMPTY_RECORD);
   const [justEarned, setJustEarned] = useState<string | null>(null);
+  const [showAllBooths, setShowAllBooths] = useState(false);
 
   const boothSlugRef = useRef<string | null>(boothSlug);
   boothSlugRef.current = boothSlug;
@@ -194,6 +198,16 @@ export function PassportView() {
   );
 
   const stampCount = confirmedSlugs.size;
+
+  // The grid opens with the first booths only; the rest are one tap away.
+  const visibleBooths = showAllBooths ? BOOTHS : BOOTHS.slice(0, COLLAPSED_BOOTHS);
+  const hiddenBoothCount = BOOTHS.length - COLLAPSED_BOOTHS;
+  const hiddenCollected = useMemo(
+    () =>
+      BOOTHS.slice(COLLAPSED_BOOTHS).filter((item) => boothState(item.id) !== "empty")
+        .length,
+    [boothState],
+  );
 
   // ---- actions --------------------------------------------------------------
   /** Applies a loaded passport, including the saved learning record. */
@@ -461,8 +475,8 @@ export function PassportView() {
                   <span className="dot" aria-hidden="true" /> Completed
                 </span>
               </div>
-              <div className="stamp-grid">
-                {BOOTHS.map((item) => (
+              <div className="stamp-grid" id="booth-stamp-grid">
+                {visibleBooths.map((item) => (
                   <StampTile
                     key={item.id}
                     booth={item}
@@ -471,6 +485,31 @@ export function PassportView() {
                   />
                 ))}
               </div>
+
+              <button
+                type="button"
+                className="booth-toggle"
+                aria-expanded={showAllBooths}
+                aria-controls="booth-stamp-grid"
+                onClick={() => setShowAllBooths((open) => !open)}
+              >
+                {showAllBooths ? (
+                  <>
+                    <ChevronUp size={18} aria-hidden="true" />
+                    Show fewer booths
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown size={18} aria-hidden="true" />
+                    Show all {BOOTHS.length} booths
+                    <span className="booth-toggle-count">
+                      {hiddenCollected > 0
+                        ? `${hiddenBoothCount} more · ${hiddenCollected} collected`
+                        : `${hiddenBoothCount} more`}
+                    </span>
+                  </>
+                )}
+              </button>
             </section>
 
             <aside className="side-stack">
