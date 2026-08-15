@@ -1,36 +1,34 @@
-import type { Metadata } from "next";
-import Link from "next/link";
-import { QrCode, ShieldCheck } from "lucide-react";
+import type { Metadata, Viewport } from "next";
+
+import { ToastProvider } from "@/components/Toaster";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "My Voice Passport",
-  description: "A QR-powered English festival passport with teacher-confirmed booth stamps.",
+  title: "My Voice Passport | Find Your Voice Festival",
+  description:
+    "Digital participation passport for the Kaplan Find Your Voice English Festival Day. Speak at every booth, collect a stamp and become a Voice Champion.",
+  applicationName: "My Voice Passport",
+  icons: { icon: "/favicon.svg" },
+  openGraph: {
+    title: "My Voice Passport | Find Your Voice Festival",
+    description:
+      "Speak, connect and collect a digital stamp at every booth. Every Voice Matters. Every Conversation Counts.",
+    type: "website",
+  },
+  robots: { index: false, follow: false },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export const viewport: Viewport = {
+  themeColor: "#0d2b45",
+  width: "device-width",
+  initialScale: 1,
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en-SG">
       <body>
-        <header className="site-header">
-          <div className="nav-shell">
-            <Link href="/" className="brand" aria-label="Voice Passport home">
-              <span className="brand-mark">V</span>
-              <span>
-                <strong>Find Your Voice</strong>
-                <small>English Festival Day</small>
-              </span>
-            </Link>
-            <nav className="nav-links" aria-label="Main navigation">
-              <Link href="/booth-kit"><QrCode size={18} /> Booth QR Kit</Link>
-              <Link href="/teacher"><ShieldCheck size={18} /> Teacher</Link>
-            </nav>
-          </div>
-        </header>
-        {children}
-        <footer className="site-footer">
-          <strong>Every Voice Matters.</strong> Every Conversation Counts.
-        </footer>
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

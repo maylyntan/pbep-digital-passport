@@ -1,5 +1,18 @@
-import PassportApp from "@/components/PassportApp";
+import { Suspense } from "react";
 
-export default function HomePage() {
-  return <PassportApp />;
+import { PassportView } from "@/components/PassportView";
+
+export default function PassportPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="loading-screen">
+          <div className="spinner" aria-hidden="true" />
+          <p>Opening your passport…</p>
+        </div>
+      }
+    >
+      <PassportView />
+    </Suspense>
+  );
 }

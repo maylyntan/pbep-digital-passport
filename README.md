@@ -1,178 +1,184 @@
 # My Voice Passport
 
-A mobile-first English festival web app inspired by a digital “voice passport” experience. Students scan booth QR codes, complete speaking challenges, request confirmation, and receive stamps only after a teacher approves them.
+Digital participation passport for the **Kaplan Singapore — Find Your Voice English Festival Day**.
 
-## Included
+Students carry a passport on their phone, complete a speaking activity at each of the 25 booths,
+scan the booth's printed QR code, and collect a stamp once a facilitator confirms it. Facilitators
+get a live dashboard of participation across every booth, class and student.
 
-- Student passport stored on the device
-- 8 editable speaking booths
-- Printable QR booth kit
-- Supabase database backend
-- Supabase email/password teacher login
-- Teacher confirmation queue
-- Confirm/decline workflow
-- Confirmed stamp history
-- Realtime page updates after teacher approval
-- Responsive mobile UI
-- Vercel-ready Next.js App Router project
+> Every Voice Matters. Every Conversation Counts.
 
-## 1. Run locally
+Built to the specification in [PRD.md](PRD.md).
 
-Requirements: current Node.js LTS and npm.
+---
+
+## Stack
+
+| Layer | Choice |
+|---|---|
+| Framework | Next.js (App Router, TypeScript, React 19) |
+| Styling | Plain CSS with Kaplan brand tokens in `app/globals.css` |
+| Data | Supabase Postgres with Row Level Security |
+| Realtime | Supabase Realtime on `checkin_requests` and `stamps` |
+| Student auth | Supabase anonymous sign-in (device-linked) |
+| Facilitator auth | Supabase email + password, gated by an invite code |
+| QR codes | `qrcode.react` (SVG, generated in the browser) |
+| Hosting | Netlify with `@netlify/plugin-nextjs` |
+
+---
+
+## Routes
+
+| Route | Access | Purpose |
+|---|---|---|
+| `/` | Public | Student passport — registration, then the stamp dashboard |
+| `/?booth=<slug>` | Public | Passport with the scanned booth's check-in card pinned to the top |
+| `/teacher/login` | Public | Facilitator sign in / sign up |
+| `/teacher` | Facilitator | Pending check-in queue, KPIs, booth and class breakdowns, student records, CSV export |
+| `/teacher/booth-kit` | Facilitator | Printable A4 QR kit, one card per booth |
+
+The booth kit is **not** linked from any student-facing page. Printed cards at the physical
+booths are the only place students meet a QR code.
+
+---
+
+## Setup
+
+### 1. Install
 
 ```bash
 npm install
-cp .env.example .env.local
+```
+
+### 2. Create the Supabase project
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. Open **SQL Editor** and run the whole of [`supabase/schema.sql`](supabase/schema.sql).
+3. Go to **Authentication → Providers** and enable **Anonymous Sign-Ins**. Students cannot
+   register without this.
+4. Go to **Authentication → Providers → Email** and decide whether facilitator accounts need
+   email confirmation. With confirmation on, a new facilitator must confirm by email, sign in,
+   and then enter the invite code.
+
+The schema also adds `checkin_requests` and `stamps` to the realtime publication. If Supabase
+reports a table is already in the publication, ignore that message.
+
+### 3. Environment
+
+Copy `.env.example` to `.env.local` and fill it in:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
+NEXT_PUBLIC_SITE_URL=https://<site>.netlify.app
+SUPABASE_SERVICE_ROLE_KEY=<service role key>
+TEACHER_INVITE_CODE=<a code you share with facilitators>
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` and `TEACHER_INVITE_CODE` are server-only — never prefix them with
+`NEXT_PUBLIC_`.
+
+> **`NEXT_PUBLIC_SITE_URL` is baked into every booth QR code.** Set the final production URL
+> before printing the kit.
+
+### 4. Run
+
+```bash
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+---
 
-## 2. Create Supabase project
+## First facilitator
 
-1. Create a new Supabase project.
-2. Open **SQL Editor**.
-3. Paste and run `supabase/schema.sql`.
-4. In **Project Settings > API**, copy:
-   - Project URL
-   - Publishable key (or legacy anon key)
-5. Put them in `.env.local`:
+1. Go to `/teacher/login` → **Sign up**.
+2. Enter name, email, password and the festival invite code.
+3. The app calls `POST /api/teacher/claim`, which verifies the code server-side and creates the
+   `teacher_profiles` row that grants access.
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_KEY
-NEXT_PUBLIC_SITE_URL=http://localhost:3000
+An account without that row sees an invite-code prompt instead of the dashboard. Sign-up alone
+grants nothing.
+
+---
+
+## How a stamp is issued
+
+```
+Student completes the activity
+  → scans the printed booth card  ( /?booth=<slug> )
+  → taps "Request my stamp"       ( pending checkin_requests row )
+Facilitator sees it in the live queue on /teacher
+  → taps "Confirm"                ( teacher_decide_checkin RPC )
+  → stamp row is written by the security-definer function
+Student's phone updates within ~2 seconds via realtime
 ```
 
-## 3. Create a teacher account
+Students can never write to `stamps` — there is no insert policy on that table at all. The unique
+constraint on `(student_id, booth_slug)` means the same booth can never be counted twice, and the
+partial unique index means a student can only have one pending request per booth.
 
-In Supabase Dashboard:
+Titles unlock at 8, 15 and 25 confirmed stamps: Voice Explorer → Voice Adventurer →
+Confident Communicator → Voice Champion.
 
-1. Go to **Authentication > Users**.
-2. Create/invite the teacher user with email + password.
-3. Copy that user's UUID.
-4. Run this in SQL Editor, replacing the UUID and name:
+---
 
-```sql
-insert into public.teacher_profiles (user_id, display_name)
-values ('PASTE-AUTH-USER-UUID-HERE', 'Festival Teacher');
+## Deploy to Netlify
+
+1. Push the repo to GitHub.
+2. In Netlify, **Add new site → Import an existing project**, and pick the repo.
+3. Build command `npm run build`, publish directory `.next` (already set in `netlify.toml`).
+4. Add all five environment variables under **Site settings → Environment variables**.
+5. Deploy, then open `/teacher/booth-kit` and print the cards **after** the final URL is live.
+
+---
+
+## Festival-day runbook
+
+**Before the day**
+
+- Confirm the production URL, then print the QR kit (4 cards per A4 sheet, 7 sheets).
+- Scan a printed card with a phone to check it opens the passport.
+- Share the invite code with facilitators and have each of them sign in once, in advance.
+- Ask facilitators to keep `/teacher` open on the booth device — the queue is live.
+
+**On the day**
+
+- Students open the passport, register with first name / nickname, optional student ID, and class.
+- At each booth: speak first, then scan, then tap **Request my stamp**.
+- The facilitator confirms from the queue. The stamp appears on the student's phone immediately.
+
+**If something goes wrong**
+
+| Problem | Fix |
+|---|---|
+| Student cleared their browser or swapped device | The old passport stays in the dashboard, but the device link is gone. They register again; earlier stamps stay on the original record. |
+| Student tapped request twice | Harmless — only one pending row can exist per booth. |
+| Wrong student confirmed | Reject was not the action taken, so the stamp exists. Remove the row from the `stamps` table in Supabase. |
+| Queue not updating | Check the realtime publication in Supabase and refresh the dashboard. |
+| Facilitator sees "Enter your invite code" | Their account has no `teacher_profiles` row. Enter the code to unlock. |
+
+---
+
+## Scripts
+
+```bash
+npm run dev     # local development
+npm run build   # production build
+npm run start   # serve the production build
+npm run check   # TypeScript, no emit
 ```
 
-The teacher can now sign in at `/teacher`.
+---
 
-Important: creating an Auth user alone does **not** grant teacher confirmation rights. The UUID must also exist in `teacher_profiles`.
+## Data and privacy
 
-## 4. Customize booths
+Only first name or nickname, an optional student ID, class, booth stamps and the student's own
+learning record are stored. No email, no photos, no student-to-student data. Decide how long
+records are kept after the festival and who deletes them.
 
-Edit `lib/booths.ts`.
+---
 
-Each booth has:
+## Repository notes
 
-```ts
-{
-  id: "booth-1",
-  slug: "hello-hub",
-  title: "Hello Hub",
-  prompt: "...",
-  helper: "...",
-  emoji: "👋"
-}
-```
-
-Keep `slug` unique. Changing a slug after the event starts will make it a new booth from the database's point of view.
-
-## 5. Deploy to GitHub + Vercel
-
-### GitHub manual upload
-
-1. Create a new empty GitHub repository.
-2. Extract this project ZIP.
-3. Upload all files/folders to the repository root.
-4. Commit the files.
-
-Do **not** upload `.env.local`.
-
-### Vercel
-
-1. In Vercel, click **Add New > Project**.
-2. Import the GitHub repository.
-3. Vercel should detect Next.js automatically.
-4. Add these environment variables under **Project Settings > Environment Variables**:
-
-```text
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-NEXT_PUBLIC_SITE_URL
-```
-
-Set `NEXT_PUBLIC_SITE_URL` to your final Vercel URL, e.g. `https://voice-passport.vercel.app`.
-
-5. Deploy.
-
-The QR kit uses the browser's current origin, so QR codes on the deployed `/booth-kit` page automatically point at the deployed domain.
-
-## Event flow
-
-### Student
-
-1. Opens `/` and creates a passport.
-2. Scans a printed booth QR code.
-3. Completes the speaking challenge.
-4. Taps **Request teacher confirmation**.
-5. Waits at the booth.
-6. Teacher approves.
-7. The booth page updates and the home passport displays the stamp.
-
-### Teacher
-
-1. Opens `/teacher`.
-2. Signs in.
-3. Sees pending students grouped by booth.
-4. Watches/listens to the student's task.
-5. Taps **Confirm** or **Decline**.
-
-## Security model and privacy note
-
-The app intentionally avoids a service-role/secret Supabase key in the browser. Teacher approval is enforced in Postgres through a `SECURITY DEFINER` database function that checks whether the logged-in Supabase Auth user exists in `teacher_profiles`.
-
-This starter stores only first name/nickname, student ID/code, class, booth requests and stamps. Student devices use Supabase Anonymous Auth, and RLS restricts each student to their own student/check-in/stamp rows. Approved teachers can read the event queue and confirm requests.
-
-For a school production environment, consider using pseudonymous event codes instead of institutional student IDs if your privacy policy does not require the real identifier. Review your organization's privacy/data-retention policy before a live event.
-
-## Recommended pre-event checklist
-
-- Create the Supabase project, run the schema, and enable Anonymous Sign-Ins.
-- Add at least one teacher Auth account and `teacher_profiles` row.
-- Deploy to Vercel.
-- Open `/booth-kit` on the **deployed** site and print the QR cards.
-- Test one complete student flow on a phone.
-- Confirm the teacher can approve a request from another device.
-- Decide whether “Student ID” should be replaced with an event-only participant code.
-- Test venue Wi-Fi/mobile connectivity.
-
-## Project structure
-
-```text
-app/
-  page.tsx              Student passport
-  booth-kit/page.tsx    Printable QR kit
-  booth/[slug]/page.tsx Booth challenge
-  teacher/page.tsx      Teacher login + live queue
-components/
-lib/
-supabase/schema.sql
-```
-
-## Troubleshooting
-
-**Teacher logs in but cannot confirm**  
-Add the Auth user's UUID to `public.teacher_profiles`.
-
-**QR codes point to localhost**  
-Open `/booth-kit` on your deployed Vercel URL before printing. The component replaces the fallback URL with `window.location.origin`.
-
-**Student request does not update automatically**  
-Check that `checkin_requests` is enabled in Supabase Realtime. The schema attempts to add it to the realtime publication.
-
-**`alter publication ... add table` says the table is already a member**  
-That just means Realtime was already enabled. You can ignore that final statement or remove it and run the rest of the schema.
+`Archive - do not use/` is an earlier prototype kept for reference only. It is git-ignored and
+nothing in the current build imports from it.
