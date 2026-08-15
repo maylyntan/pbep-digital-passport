@@ -17,16 +17,25 @@ import { StampTile } from "@/components/StampTile";
 import { useToast } from "@/components/Toaster";
 import { BOOTHS, HEADLINE_SKILLS, getBooth } from "@/lib/booths";
 import {
+  FOREIGN_KEY_VIOLATION,
+  UNIQUE_VIOLATION,
   loadPassport,
   registerPassport,
   requestCheckin,
   saveLearningRecord,
   startNewPassport,
+  type DatabaseError,
   type PassportSnapshot,
   type RegistrationInput,
 } from "@/lib/passport";
 import { ensureAnonymousSession, getSupabase } from "@/lib/supabase-client";
-import type { BoothState, CheckinRow, LearningRecord, StampRow } from "@/lib/types";
+import type {
+  BoothState,
+  CheckinRow,
+  LearningRecord,
+  StampRow,
+  StudentRow,
+} from "@/lib/types";
 
 const EMPTY_RECORD: LearningRecord = {
   reflection: "",
@@ -190,10 +199,35 @@ export function PassportView() {
     if (!supabase || !authUserId) return;
     setBusy(true);
     try {
-      const student = await registerPassport(supabase, authUserId, input);
+      let student: StudentRow;
+      try {
+        student = await registerPassport(supabase, authUserId, input);
+      } catch (error) {
+        const code = (error as DatabaseError).code;
+
+        // The device holds a session for a user that no longer exists. Take a
+        // fresh anonymous session and try once more rather than dead-ending.
+        if (code === FOREIGN_KEY_VIOLATION) {
+          const freshUserId = await startNewPassport(supabase);
+          if (!freshUserId) throw error;
+          setAuthUserId(freshUserId);
+          student = await registerPassport(supabase, freshUserId, input);
+        } else if (code === UNIQUE_VIOLATION) {
+          // This session already has a passport — load it instead of failing.
+          const existing = await loadPassport(supabase, authUserId);
+          if (!existing) throw error;
+          setSnapshot(existing);
+          toast.info("This device already has a passport.");
+          return;
+        } else {
+          throw error;
+        }
+      }
+
       setSnapshot({ student, stamps: [], checkins: [] });
       toast.success("Your Voice Passport is ready!");
-    } catch {
+    } catch (error) {
+      console.error("Passport registration failed:", error);
       toast.error("We couldn't create your passport. Please try again.");
     } finally {
       setBusy(false);
@@ -210,10 +244,10 @@ export function PassportView() {
       );
       toast.success("Sent to your facilitator — hold on a moment.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (message.includes("duplicate key") || message.includes("23505")) {
+      if ((error as DatabaseError).code === UNIQUE_VIOLATION) {
         toast.info("You've already asked for this stamp.");
       } else {
+        console.error("Check-in request failed:", error);
         toast.error("That request didn't send. Please try again.");
       }
     } finally {
@@ -228,7 +262,8 @@ export function PassportView() {
       const student = await saveLearningRecord(supabase, snapshot.student.id, record);
       setSnapshot((current) => (current ? { ...current, student } : current));
       toast.success("Learning record saved.");
-    } catch {
+    } catch (error) {
+      console.error("Learning record save failed:", error);
       toast.error("Your reflection could not be saved.");
     } finally {
       setSaving(false);

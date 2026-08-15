@@ -49,6 +49,20 @@ export interface RegistrationInput {
   className: string;
 }
 
+/** Postgres error codes worth reacting to rather than just reporting. */
+export const FOREIGN_KEY_VIOLATION = "23503";
+export const UNIQUE_VIOLATION = "23505";
+
+export interface DatabaseError extends Error {
+  code?: string;
+}
+
+function toError(error: { message: string; code?: string }): DatabaseError {
+  const wrapped: DatabaseError = new Error(error.message);
+  wrapped.code = error.code;
+  return wrapped;
+}
+
 export async function registerPassport(
   supabase: SupabaseClient,
   authUserId: string,
@@ -67,7 +81,7 @@ export async function registerPassport(
     .select("*")
     .single<StudentRow>();
 
-  if (error) throw new Error(error.message);
+  if (error) throw toError(error);
   return data;
 }
 
@@ -83,7 +97,7 @@ export async function requestCheckin(
     .select("*")
     .single<CheckinRow>();
 
-  if (error) throw new Error(error.message);
+  if (error) throw toError(error);
   return data;
 }
 
@@ -105,7 +119,7 @@ export async function saveLearningRecord(
     .select("*")
     .single<StudentRow>();
 
-  if (error) throw new Error(error.message);
+  if (error) throw toError(error);
   return data;
 }
 

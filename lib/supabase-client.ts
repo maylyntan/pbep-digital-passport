@@ -31,14 +31,24 @@ export function getSupabase(): SupabaseClient | null {
 }
 
 /**
- * Ensures an auth session exists for a student, signing in anonymously on
+ * Ensures a usable auth session exists for a student, signing in anonymously on
  * first visit. The session is what links a device to its passport.
+ *
+ * getSession() only reads local storage, so a device can hold a token for a user
+ * that no longer exists server-side (for example after test data is cleared).
+ * That session looks valid but every write fails with a foreign key violation
+ * against auth.users, so verify against the server and re-authenticate if stale.
  */
 export async function ensureAnonymousSession(
   supabase: SupabaseClient,
 ): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
-  if (data.session?.user) return data.session.user.id;
+
+  if (data.session?.user) {
+    const { data: verified, error } = await supabase.auth.getUser();
+    if (!error && verified.user) return verified.user.id;
+    await supabase.auth.signOut().catch(() => {});
+  }
 
   const { data: signedIn, error } = await supabase.auth.signInAnonymously();
   if (error) return null;
