@@ -3,8 +3,10 @@
 --
 -- Before students can register, also enable:
 --   Authentication > Providers > Anonymous Sign-Ins
--- The realtime publication statements at the bottom are safe to re-run; if
--- Supabase reports a table is already in the publication, ignore that message.
+--
+-- The whole file is idempotent: re-run it any time to apply changes. The SQL
+-- editor runs it as a single transaction, so any error rolls back everything —
+-- if a run fails, nothing was half-applied.
 
 create extension if not exists pgcrypto;
 
@@ -288,8 +290,29 @@ grant execute on function public.claim_passport(text, text) to authenticated;
 -- Realtime
 -- ---------------------------------------------------------------------------
 
-alter publication supabase_realtime add table public.checkin_requests;
-alter publication supabase_realtime add table public.stamps;
+-- Adding a table that is already published raises 42710, which would abort the
+-- whole script, so only add what is missing.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime'
+       and schemaname = 'public'
+       and tablename = 'checkin_requests'
+  ) then
+    alter publication supabase_realtime add table public.checkin_requests;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime'
+       and schemaname = 'public'
+       and tablename = 'stamps'
+  ) then
+    alter publication supabase_realtime add table public.stamps;
+  end if;
+end
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Granting facilitator access
