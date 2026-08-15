@@ -119,6 +119,11 @@ using (user_id = auth.uid());
 
 -- Check-in requests ----------------------------------------------------------
 
+-- NOTE: the outer column is written as checkin_requests.student_id on purpose.
+-- public.students has its own text column called student_id (the school ID), so
+-- an unqualified `student_id` inside these subqueries resolves to students.student_id
+-- and Postgres rejects the policy with "operator does not exist: uuid = text".
+
 drop policy if exists "student can request own checkin" on public.checkin_requests;
 create policy "student can request own checkin" on public.checkin_requests
 for insert to authenticated
@@ -127,7 +132,7 @@ with check (
   and decided_by is null
   and exists (
     select 1 from public.students s
-    where s.id = student_id and s.auth_user_id = auth.uid()
+    where s.id = checkin_requests.student_id and s.auth_user_id = auth.uid()
   )
 );
 
@@ -137,7 +142,7 @@ for select to authenticated
 using (
   exists (
     select 1 from public.students s
-    where s.id = student_id and s.auth_user_id = auth.uid()
+    where s.id = checkin_requests.student_id and s.auth_user_id = auth.uid()
   )
   or public.is_teacher()
 );
@@ -146,13 +151,14 @@ using (
 
 -- Stamps ---------------------------------------------------------------------
 
+-- Same qualification rule as above: stamps.student_id, never bare student_id.
 drop policy if exists "student or teacher can read stamps" on public.stamps;
 create policy "student or teacher can read stamps" on public.stamps
 for select to authenticated
 using (
   exists (
     select 1 from public.students s
-    where s.id = student_id and s.auth_user_id = auth.uid()
+    where s.id = stamps.student_id and s.auth_user_id = auth.uid()
   )
   or public.is_teacher()
 );
