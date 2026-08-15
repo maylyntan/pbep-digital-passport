@@ -19,6 +19,7 @@ import { BOOTHS, HEADLINE_SKILLS, getBooth } from "@/lib/booths";
 import {
   FOREIGN_KEY_VIOLATION,
   UNIQUE_VIOLATION,
+  claimPassport,
   loadPassport,
   registerPassport,
   requestCheckin,
@@ -195,10 +196,33 @@ export function PassportView() {
   const stampCount = confirmedSlugs.size;
 
   // ---- actions --------------------------------------------------------------
+  /** Applies a loaded passport, including the saved learning record. */
+  function applyPassport(loaded: PassportSnapshot) {
+    setSnapshot(loaded);
+    setRecord({
+      reflection: loaded.student.reflection ?? "",
+      new_vocabulary: loaded.student.new_vocabulary ?? "",
+      favourite_booth: loaded.student.favourite_booth ?? "",
+      speaking_goal: loaded.student.speaking_goal ?? "",
+    });
+  }
+
   async function handleRegister(input: RegistrationInput) {
     if (!supabase || !authUserId) return;
     setBusy(true);
     try {
+      // A returning student keeps their stamps: the school ID finds the
+      // passport, and the first name proves it is theirs.
+      const returning = await claimPassport(supabase, input.studentId, input.studentName);
+      if (returning) {
+        const reloaded = await loadPassport(supabase, authUserId);
+        if (reloaded) {
+          applyPassport(reloaded);
+          toast.success(`Welcome back, ${returning.student_name}!`);
+          return;
+        }
+      }
+
       let student: StudentRow;
       try {
         student = await registerPassport(supabase, authUserId, input);
@@ -216,7 +240,7 @@ export function PassportView() {
           // This session already has a passport — load it instead of failing.
           const existing = await loadPassport(supabase, authUserId);
           if (!existing) throw error;
-          setSnapshot(existing);
+          applyPassport(existing);
           toast.info("This device already has a passport.");
           return;
         } else {
@@ -227,8 +251,20 @@ export function PassportView() {
       setSnapshot({ student, stamps: [], checkins: [] });
       toast.success("Your Voice Passport is ready!");
     } catch (error) {
-      console.error("Passport registration failed:", error);
-      toast.error("We couldn't create your passport. Please try again.");
+      const code = (error as DatabaseError).code;
+
+      if (code === "NAME_MISMATCH") {
+        toast.error(
+          "That Student ID is registered under a different name. Check your details or ask your teacher.",
+        );
+      } else if (code === "DEVICE_HAS_PASSPORT") {
+        toast.error(
+          "This device already has a different passport. Tap New passport first.",
+        );
+      } else {
+        console.error("Passport registration failed:", error);
+        toast.error("We couldn't create your passport. Please try again.");
+      }
     } finally {
       setBusy(false);
     }

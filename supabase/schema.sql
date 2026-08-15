@@ -17,7 +17,8 @@ create table if not exists public.students (
   id              uuid primary key default gen_random_uuid(),
   auth_user_id    uuid not null unique references auth.users(id) on delete cascade,
   student_name    text not null check (char_length(student_name) between 1 and 80),
-  student_id      text check (char_length(student_id) <= 40),
+  -- School ID: the letters CT followed by digits, e.g. CT1234. Stored uppercase.
+  student_id      text not null check (student_id ~ '^CT[0-9]+$'),
   class_name      text not null check (char_length(class_name) between 1 and 40),
   -- Personal learning record
   reflection      text check (char_length(reflection) <= 1000),
@@ -66,6 +67,22 @@ create table if not exists public.stamps (
 
 create index if not exists stamps_student_idx
   on public.stamps(student_id, confirmed_at);
+
+-- One passport per school ID, compared case-insensitively.
+create unique index if not exists students_student_id_key
+  on public.students (upper(student_id));
+
+-- ---------------------------------------------------------------------------
+-- Upgrades for projects created before the school ID was required
+-- ---------------------------------------------------------------------------
+-- Safe to re-run. If the ALTERs fail, existing rows break the new rules —
+-- fix or delete those rows first (during setup the table is normally empty).
+
+alter table public.students alter column student_id set not null;
+
+alter table public.students drop constraint if exists students_student_id_format;
+alter table public.students
+  add constraint students_student_id_format check (student_id ~ '^CT[0-9]+$');
 
 -- ---------------------------------------------------------------------------
 -- Row level security
@@ -204,6 +221,68 @@ $$;
 
 revoke all on function public.teacher_decide_checkin(uuid, text) from public;
 grant execute on function public.teacher_decide_checkin(uuid, text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Returning students
+-- ---------------------------------------------------------------------------
+-- A student on a new device gets a new anonymous session, so RLS hides their
+-- existing passport. This function re-links the passport to the current device
+-- when the school ID is found AND the first name matches, so a student cannot
+-- take over someone else's record by guessing their CT number.
+--
+-- Returns the passport row, or null when the school ID has never been used.
+
+create or replace function public.claim_passport(
+  p_student_id   text,
+  p_student_name text
+)
+returns public.students
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  rec public.students%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception 'NOT_SIGNED_IN';
+  end if;
+
+  select * into rec
+    from public.students
+   where upper(student_id) = upper(trim(p_student_id))
+     for update;
+
+  -- Unknown school ID: the caller should register a new passport.
+  if rec.id is null then
+    return null;
+  end if;
+
+  if lower(trim(rec.student_name)) is distinct from lower(trim(p_student_name)) then
+    raise exception 'NAME_MISMATCH';
+  end if;
+
+  if rec.auth_user_id <> auth.uid() then
+    -- This device must not already be linked to a different passport.
+    if exists (
+      select 1 from public.students s
+       where s.auth_user_id = auth.uid() and s.id <> rec.id
+    ) then
+      raise exception 'DEVICE_HAS_PASSPORT';
+    end if;
+
+    update public.students
+       set auth_user_id = auth.uid(), updated_at = now()
+     where id = rec.id
+      returning * into rec;
+  end if;
+
+  return rec;
+end;
+$$;
+
+revoke all on function public.claim_passport(text, text) from public;
+grant execute on function public.claim_passport(text, text) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Realtime

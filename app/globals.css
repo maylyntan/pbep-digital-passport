@@ -819,6 +819,22 @@ textarea:focus {
   color: var(--muted);
 }
 
+.field-hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.field-error {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #a9382a;
+}
+
+input[aria-invalid="true"] {
+  border-color: var(--kaplan-coral);
+  background: #fffaf9;
+}
+
 /* --------------------------------------------------------------------------
    Learning record
    -------------------------------------------------------------------------- */

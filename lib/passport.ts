@@ -49,6 +49,48 @@ export interface RegistrationInput {
   className: string;
 }
 
+/** School IDs are the letters CT followed by at least one digit. */
+export const STUDENT_ID_PATTERN = /^CT\d+$/;
+
+/** Trims and uppercases so "ct1234 " and "CT1234" are the same ID. */
+export function normaliseStudentId(value: string): string {
+  return value.trim().toUpperCase();
+}
+
+export function isValidStudentId(value: string): boolean {
+  return STUDENT_ID_PATTERN.test(normaliseStudentId(value));
+}
+
+/**
+ * Re-links an existing passport to this device when the school ID is known and
+ * the first name matches. Returns null when the ID has never been registered.
+ *
+ * Throws with `code` NAME_MISMATCH or DEVICE_HAS_PASSPORT for the cases the UI
+ * needs to explain.
+ */
+export async function claimPassport(
+  supabase: SupabaseClient,
+  studentId: string,
+  studentName: string,
+): Promise<StudentRow | null> {
+  const { data, error } = await supabase.rpc("claim_passport", {
+    p_student_id: normaliseStudentId(studentId),
+    p_student_name: studentName.trim(),
+  });
+
+  if (error) {
+    const wrapped: DatabaseError = new Error(error.message);
+    wrapped.code = /NAME_MISMATCH/.test(error.message)
+      ? "NAME_MISMATCH"
+      : /DEVICE_HAS_PASSPORT/.test(error.message)
+        ? "DEVICE_HAS_PASSPORT"
+        : error.code;
+    throw wrapped;
+  }
+
+  return (data as StudentRow | null) ?? null;
+}
+
 /** Postgres error codes worth reacting to rather than just reporting. */
 export const FOREIGN_KEY_VIOLATION = "23503";
 export const UNIQUE_VIOLATION = "23505";
@@ -71,7 +113,7 @@ export async function registerPassport(
   const payload = {
     auth_user_id: authUserId,
     student_name: input.studentName.trim().slice(0, 80),
-    student_id: input.studentId.trim() ? input.studentId.trim().slice(0, 40) : null,
+    student_id: normaliseStudentId(input.studentId),
     class_name: input.className.trim().toUpperCase().slice(0, 40),
   };
 
