@@ -51,6 +51,11 @@ export async function ensureAnonymousSession(
   }
 
   const { data: signedIn, error } = await supabase.auth.signInAnonymously();
-  if (error) return null;
+  if (error) {
+    // Most likely cause: "Allow new users to sign up" is off in Supabase, which
+    // blocks anonymous sign-ins too and stops every student from registering.
+    console.error("Anonymous sign-in failed:", error.status, error.message);
+    return null;
+  }
   return signedIn.user?.id ?? null;
 }

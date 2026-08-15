@@ -208,14 +208,29 @@ export function PassportView() {
   }
 
   async function handleRegister(input: RegistrationInput) {
-    if (!supabase || !authUserId) return;
+    if (!supabase) return;
+
+    // Without a session there is nothing to attach the passport to. Try once
+    // more, then say so — silently doing nothing looks like a broken button.
+    let userId = authUserId;
+    if (!userId) {
+      userId = await ensureAnonymousSession(supabase);
+      setAuthUserId(userId);
+      if (!userId) {
+        toast.error(
+          "We can't start your passport right now. Please tell your teacher.",
+        );
+        return;
+      }
+    }
+
     setBusy(true);
     try {
       // A returning student keeps their stamps: the school ID finds the
       // passport, and the first name proves it is theirs.
       const returning = await claimPassport(supabase, input.studentId, input.studentName);
       if (returning) {
-        const reloaded = await loadPassport(supabase, authUserId);
+        const reloaded = await loadPassport(supabase, userId);
         if (reloaded) {
           applyPassport(reloaded);
           toast.success(`Welcome back, ${returning.student_name}!`);
@@ -225,7 +240,7 @@ export function PassportView() {
 
       let student: StudentRow;
       try {
-        student = await registerPassport(supabase, authUserId, input);
+        student = await registerPassport(supabase, userId, input);
       } catch (error) {
         const code = (error as DatabaseError).code;
 
@@ -238,7 +253,7 @@ export function PassportView() {
           student = await registerPassport(supabase, freshUserId, input);
         } else if (code === UNIQUE_VIOLATION) {
           // This session already has a passport — load it instead of failing.
-          const existing = await loadPassport(supabase, authUserId);
+          const existing = await loadPassport(supabase, userId);
           if (!existing) throw error;
           applyPassport(existing);
           toast.info("This device already has a passport.");
