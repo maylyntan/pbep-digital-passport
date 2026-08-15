@@ -551,6 +551,45 @@ p {
   animation: stamp-pop 0.6s ease;
 }
 
+.booth-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 50px;
+  margin-top: 14px;
+  padding: 12px 20px;
+  border-radius: 16px;
+  border: 1.5px solid var(--line);
+  background: var(--wash);
+  color: var(--kaplan-navy);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.booth-toggle:hover {
+  border-color: var(--kaplan-coral);
+  color: var(--kaplan-coral);
+  background: #fff;
+}
+
+.booth-toggle svg {
+  flex: 0 0 auto;
+}
+
+.booth-toggle-count {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.booth-toggle:hover .booth-toggle-count {
+  color: var(--kaplan-coral);
+}
+
 /* Side stack */
 .side-stack {
   display: grid;
